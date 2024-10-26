@@ -1,0 +1,26 @@
+version: '3'
+
+tasks:
+  wireguard-root:
+    desc: After wireguard has been deployed, you can ssh into that server as the admin user, which has sudo permissions.
+    cmds:
+      - chmod 600 ./secrets/wireguard_root_id_ed25519
+      - ssh -o StrictHostKeychecking=no root@wireguard -F .ssh_configs/wireguard_ssh_config
+  
+  wireguard-admin:
+    desc: After wireguard has been deployed, you can ssh into that server as the root user.
+    cmds:
+      - chmod 600 ./secrets/wireguard_admin_id_ed25519
+      - ssh -o StrictHostKeychecking=no admin@wireguard -F .ssh_configs/wireguard_ssh_config
+
+  gitlab-root:
+    desc: After gitlab has been deployed, you can ssh into that server as the admin user, which has sudo permissions.
+    cmds:
+      - chmod 600 ./secrets/gitlab_root_id_ed25519
+      - ssh -o StrictHostKeychecking=no root@gitlab -F .ssh_configs/gitlab_ssh_config
+  
+  gitlab-admin:
+    desc: After gitlab has been deployed, you can ssh into that server as the root user.
+    cmds:
+      - chmod 600 ./secrets/gitlab_admin_id_ed25519
+      - ssh -o StrictHostKeychecking=no admin@gitlab -F .ssh_configs/gitlab_ssh_config

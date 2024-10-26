@@ -1,0 +1,82 @@
+resource "googleworkspace_user" "${first_name}_${last_name}" {
+  primary_email = "${primary_email}"
+  password      = "${google_workspace_sha1_hashed_password}"
+  hash_function = "${google_workspace_hash_function}"
+
+  name {
+    given_name  = "${first_name}"
+    family_name = "${last_name}"
+  }
+  emails {
+    address = "${personal_email}"
+    type    = "home"
+  }
+  recovery_email = "${personal_email}"
+}
+
+resource "gitlab_user" "${first_name}_${last_name}" {
+  name             = "${first_name} ${last_name}"
+  username         = "${gitlab_username}"
+  password         = "${gitlab_password}"
+  email            = "${primary_email}"
+  reset_password   = true
+  is_admin         = false
+  projects_limit   = 2147483647
+  can_create_group = true
+  is_external      = false
+}
+
+resource "smtp_send_mail" "${first_name}_${last_name}_welcome_email" {
+  to      = ["${personal_email}"]
+  from    = "admin@internal.$${var.main_domain_name}"
+  subject = "Welcome to $${var.main_domain_name}"
+  body    = "Hi. Welcome. Gitlab passowrd: ${gitlab_password}. Google password:${google_workspace_password}"
+}
+
+resource "wireguard_asymmetric_key" "${first_name}_${last_name}_wg_keys" {
+}
+
+resource "null_resource" "${first_name}_${last_name}_wg_peer_registration" {
+  count = 1
+  triggers = {
+    self_public_key = wireguard_asymmetric_key.${first_name}_${last_name}_wg_keys.public_key
+  }
+
+  connection {
+    type        = "ssh"
+    user        = "admin"
+    private_key = file("$${path.cwd}/secrets/wireguard_admin_id_ed25519")
+    host        = "wireguard.internal.${main_domain_name}"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo wg set wg0 peer \"$${wireguard_asymmetric_key.${first_name}_${last_name}_wg_keys.public_key}\"  allowed-ips ${user_ipv4_address_in_vpn_network}/32"
+    ]
+  }
+
+  provisioner "remote-exec" {
+    when       = destroy
+    on_failure = fail
+    inline = [
+      "sudo wg set wg0 peer \"$${self.triggers.self_public_key}\" remove"
+    ]
+  }
+}
+
+resource "local_file" "wireguard_peer_config" {
+  content    = <<EOT
+[Interface]
+PrivateKey = $${wireguard_asymmetric_key.${first_name}_${last_name}_wg_keys.private_key}
+Address = ${user_ipv4_address_in_vpn_network}/32
+DNS = $${var.vpn_server_ipv4_address_in_vpn_network}
+
+[Peer]
+PublicKey = $${var.wireguard_vpn_peer_public_key}
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = wireguard.internal.$${var.main_domain_name}:51820
+
+  EOT
+  filename   = "$${path.cwd}/secrets/wireguard_conf_files/${first_name}_${last_name}_vpn.config"
+  depends_on = [null_resource.${first_name}_${last_name}_wg_peer_registration]
+}

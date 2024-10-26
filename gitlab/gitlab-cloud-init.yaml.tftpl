@@ -1,0 +1,77 @@
+#cloud-config
+users:
+  - name: admin
+    groups: sudo
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_admin_authorized_key}
+    ssh_pwauth: false
+
+
+ssh_authorized_keys:
+  - ${ssh_root_authorized_key}
+
+ssh_deletekeys: false
+
+package_update: true
+package_upgrade: true
+runcmd:
+  - sudo add-apt-repository ppa:wireguard/wireguard
+  - sudo apt-get update
+  - sudo apt-get install -y wireguard
+  - systemctl enable wg-quick@wg0.service
+  - systemctl start wg-quick@wg0.service
+  - sudo apt-get install -y curl openssh-server ca-certificates perl
+  - sudo curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.deb.sh | sudo bash
+  - sudo EXTERNAL_URL="http://${gitlab_hostname}" apt-get -y install gitlab-ee
+  - sudo mkdir -p /etc/gitlab/ssl
+  - sudo chmod 755 /etc/gitlab/ssl
+  - sudo apt-get install -y openssl
+  - openssl req -nodes -x509 -sha256 -newkey rsa:4096 -keyout /etc/gitlab/ssl/${gitlab_hostname}.key -out /etc/gitlab/ssl/${gitlab_hostname}.crt -days 3650 -subj "/C=DE/ST=Bavaria/L=Munich/O=VolksAI/OU=IT/CN=${gitlab_hostname}" -addext "subjectAltName = DNS:localhost,DNS:${gitlab_hostname}"
+  - echo 'external_url "https://${gitlab_hostname}"' >> /etc/gitlab/gitlab.rb
+  - echo "nginx['redirect_http_to_https'] = true" >> /etc/gitlab/gitlab.rb
+  - |
+    sudo gitlab-rails runner "::Gitlab::CurrentSettings.update!(signup_enabled: false)"
+  - echo "letsencrypt['enable'] = false" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['smtp_enable'] = true" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['smtp_address'] = \"${smtp_server_address}\"" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['smtp_port'] = ${smtp_port}" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['smtp_user_name'] = \"${smtp_username}\"" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['smtp_password'] = \"${smtp_password}\"" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['smtp_domain'] = \"internal.${main_domain_name}\"" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['smtp_authentication'] = \"login\"" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['smtp_enable_starttls_auto'] = true" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['smtp_openssl_verify_mode'] = 'peer'" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['gitlab_email_from'] = 'gitlab@internal.${main_domain_name}'" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['gitlab_email_reply_to'] = 'noreply@internal.${main_domain_name}'" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['omniauth_enabled'] = true" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['omniauth_allow_single_sign_on'] = ['google_oauth2']" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['omniauth_sync_profile_from_provider'] = ['google_oauth2']" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['omniauth_sync_profile_attributes'] = ['name', 'email', 'location']" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['omniauth_block_auto_created_users'] = true" >> /etc/gitlab/gitlab.rb
+  - echo "gitlab_rails['omniauth_auto_link_user'] = ['openid_connect', 'google_oauth2']" >> /etc/gitlab/gitlab.rb
+  - |
+    echo "gitlab_rails['omniauth_providers'] = [{name: \"google_oauth2\", app_id: \"${google_oauth_app_id}\",app_secret: \"${google_oauth_app_secret}\",args: { access_type: \"offline\", approval_prompt: \"\" }  }]" >> /etc/gitlab/gitlab.rb
+  - |
+    sudo gitlab-rails runner "user = User.find_by(username: 'root'); user.password = '${gitlab_root_password}'; user.password_confirmation = '${gitlab_root_password}'; user.save!"
+  - |
+    sudo gitlab-rails runner "admin = User.new(username: '${gitlab_admin_username}', email: '${gitlab_admin_email}', name: 'Admin', password: '${gitlab_admin_password}', password_confirmation: '${gitlab_admin_password}', admin: true, skip_confirmation: true, can_create_group: true); admin.assign_personal_namespace(Organizations::Organization.default_organization); admin.save!"
+  - sudo gitlab-ctl reconfigure
+  - sudo gitlab-ctl restart
+
+
+write_files:
+  - path: /etc/wireguard/wg0.conf
+    content: |
+      [Interface]
+      Address = ${gitlab_ipv4_address_in_vpn_network}/24
+      DNS = ${vpn_server_ipv4_address_in_vpn_network}
+      PrivateKey = ${gitlab_vpn_peer_private_key}
+
+      [Peer]
+      PublicKey = ${wireguard_vpn_peer_public_key}
+      AllowedIPs = 10.0.0.0/24
+      Endpoint = ${vpn_server_ipv4_address_in_internal_tools_network}:51820
+    owner: "root:root"
+    permissions: "0644"

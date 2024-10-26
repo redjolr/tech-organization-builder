@@ -1,0 +1,210 @@
+version: '3'
+
+includes:
+  onboard:
+    taskfile: ./Taskfile_onboard_users.yml
+  ssh:
+    taskfile: ./Taskfile_ssh.yml
+
+
+tasks:
+  init:
+    status:
+      - test -f secrets.auto.tfvars
+      - test -f gitlab.auto.tfvars
+    cmds: 
+      - terraform -chdir=./.init init
+      - terraform -chdir=./.init apply -auto-approve
+      - rm -f ./.init/terraform.tfstate
+      - rm -f ./.init/terraform.tfstate.backup
+      - rm -f ./.init/.terraform.lock.hcl
+      - rm -rf ./.init/.terraform
+
+  init-terraform-backend:
+    run: always
+    cmds:
+      - echo "Initiating AWS S3 Terraform Backend"
+      - terraform  init
+      - terraform apply -auto-approve -target=module.backend_terraform 
+
+  deploy-foundation:
+    dotenv: ['secrets.auto.tfvars']
+    run: always
+    desc: Deploys the whole organization's resources
+    preconditions:
+      - test -f s3_backend.tf
+    cmds:
+      - export $(grep -v '^#' secrets.auto.tfvars | sed 's/ *= */=/g' | sed 's/"//g')
+      - echo "$hcloud_token"
+      - |
+        terraform  init \
+        -backend-config="access_key=$aws_access_key" \
+        -backend-config="secret_key=$aws_secret_key"
+      - terraform apply -auto-approve -target=module.foundation
+
+  destroy-foundation:
+    dotenv: ['secrets.auto.tfvars']
+    run: always
+    preconditions:
+      - test -f s3_backend.tf
+    desc: |
+      Destroys the Gitlab instances. It will not delete the images. 
+    cmds:
+      - export $(grep -v '^#' secrets.auto.tfvars | sed 's/ *= */=/g' | sed 's/"//g')
+      - terraform destroy -auto-approve -target=module.foundation
+
+  deploy-gitlab:
+    dotenv: ['secrets.auto.tfvars']
+    run: always
+    preconditions:
+      - test -f s3_backend.tf
+    cmds:
+      - terraform apply -auto-approve -target=module.gitlab
+
+  destroy-gitlab:
+    dotenv: ['secrets.auto.tfvars']
+    run: always
+    preconditions:
+      - test -f s3_backend.tf
+    cmds:
+      - terraform destroy -auto-approve -target=module.gitlab 
+
+  deploy-gitlab-runners:
+    dotenv: ['.env']
+    run: always
+    preconditions:
+      - test -f s3_backend.tf
+    deps: 
+      - validate-env-vars
+    cmds:
+      - task: build-gitlab-image-if-doesnt-exist
+      - echo "Deploying gitlab"
+      - |
+        terraform  init \
+        -backend-config="access_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_ID" \
+        -backend-config="secret_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_VALUE"
+      - |
+        terraform apply -auto-approve \
+        -target=module.gitlab_runners \
+        -var hcloud_token=${HCLOUD_TOKEN} \
+        -var hetzner_dns_api_token=$HCLOUD_DNS_API_TOKEN \
+        -var gitlab_self_signed_cert_country=$GITLAB_SELF_SIGNED_CERT_COUNTRY \
+        -var gitlab_self_signed_cert_common_name=$GITLAB_SELF_SIGNED_CERT_COMMON_NAME \
+        -var gitlab_self_signed_cert_organization=$GITLAB_SELF_SIGNED_CERT_ORGANIZATION \
+        -var aws_access_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_ID \
+        -var aws_secret_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_VALUE \
+        -var gitlab_admin_email=$GITLAB_ADMIN_EMAIL \
+        -var gitlab_admin_api_personal_access_token=$GITLAB_ADMIN_API_PERSONAL_ACCESS_TOKEN \
+        -var gitlab_admin_username=$GITLAB_ADMIN_USERNAME \
+        -var gitlab_admin_password=$GITLAB_ADMIN_PASSWORD \
+        -var gitlab_root_password=$GITLAB_ROOT_PASSWORD \
+        -var google_admin_customer_id=$GOOGLE_ADMIN_CUSTOMER_ID \
+        -var gitlab_runner_docker_executor_count=$GITLAB_RUNNER_GENERIC_DOCKER_EXECUTOR_COUNT \
+        -var google_oauth_app_id=$GOOGLE_OAUTH_APP_ID \
+        -var google_oauth_app_secret=$GOOGLE_OAUTH_APP_SECRET \
+        -var vpn_ddns_authentication_key_hmac_sha256=$VPN_DDNS_AUTHENTICATION_KEY_HMAC_SHA256
+
+  apply-gitlab-settings:
+    dotenv: ['.env']
+    run: always
+    preconditions:
+      - test -f s3_backend.tf
+    desc: Applies Gitlab settings, such as enforcing two factor authentication
+    deps: 
+      - validate-env-vars
+    cmds:
+      - task: build-gitlab-image-if-doesnt-exist
+      - echo "Deploying gitlab"
+      - |
+        terraform  init \
+        -backend-config="access_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_ID" \
+        -backend-config="secret_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_VALUE"
+      - |
+        terraform apply -auto-approve \
+        -target=module.gitlab_settings \
+        -var hcloud_token=${HCLOUD_TOKEN} \
+        -var hetzner_dns_api_token=$HCLOUD_DNS_API_TOKEN \
+        -var gitlab_self_signed_cert_country=$GITLAB_SELF_SIGNED_CERT_COUNTRY \
+        -var gitlab_self_signed_cert_common_name=$GITLAB_SELF_SIGNED_CERT_COMMON_NAME \
+        -var gitlab_self_signed_cert_organization=$GITLAB_SELF_SIGNED_CERT_ORGANIZATION \
+        -var aws_access_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_ID \
+        -var aws_secret_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_VALUE \
+        -var gitlab_admin_email=$GITLAB_ADMIN_EMAIL \
+        -var gitlab_admin_api_personal_access_token=$GITLAB_ADMIN_API_PERSONAL_ACCESS_TOKEN \
+        -var gitlab_admin_username=$GITLAB_ADMIN_USERNAME \
+        -var gitlab_admin_password=$GITLAB_ADMIN_PASSWORD \
+        -var gitlab_root_password=$GITLAB_ROOT_PASSWORD \
+        -var google_admin_customer_id=$GOOGLE_ADMIN_CUSTOMER_ID \
+        -var gitlab_runner_docker_executor_count=$GITLAB_RUNNER_GENERIC_DOCKER_EXECUTOR_COUNT \
+        -var google_oauth_app_id=$GOOGLE_OAUTH_APP_ID \
+        -var google_oauth_app_secret=$GOOGLE_OAUTH_APP_SECRET \
+        -var vpn_ddns_authentication_key_hmac_sha256=$VPN_DDNS_AUTHENTICATION_KEY_HMAC_SHA256
+
+
+  apply-iam:
+    dotenv: ['.env']
+    run: always
+    desc: Deploys the whole organization's resources
+    preconditions:
+      - test -f s3_backend.tf
+    deps: 
+      - validate-env-vars
+    cmds:
+      - task: build-gitlab-image-if-doesnt-exist
+      - echo "Deploying gitlab"
+      - |
+        terraform  init \
+        -backend-config="access_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_ID" \
+        -backend-config="secret_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_VALUE"
+      - |
+        terraform apply -auto-approve \
+        -target=module.iam \
+        -var hcloud_token=${HCLOUD_TOKEN} \
+        -var hetzner_dns_api_token=$HCLOUD_DNS_API_TOKEN \
+        -var gitlab_self_signed_cert_country=$GITLAB_SELF_SIGNED_CERT_COUNTRY \
+        -var gitlab_self_signed_cert_common_name=$GITLAB_SELF_SIGNED_CERT_COMMON_NAME \
+        -var gitlab_self_signed_cert_organization=$GITLAB_SELF_SIGNED_CERT_ORGANIZATION \
+        -var aws_access_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_ID \
+        -var aws_secret_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_VALUE \
+        -var gitlab_admin_email=$GITLAB_ADMIN_EMAIL \
+        -var gitlab_admin_api_personal_access_token=$GITLAB_ADMIN_API_PERSONAL_ACCESS_TOKEN \
+        -var gitlab_admin_username=$GITLAB_ADMIN_USERNAME \
+        -var gitlab_admin_password=$GITLAB_ADMIN_PASSWORD \
+        -var gitlab_root_password=$GITLAB_ROOT_PASSWORD \
+        -var google_admin_customer_id=$GOOGLE_ADMIN_CUSTOMER_ID \
+        -var gitlab_runner_docker_executor_count=$GITLAB_RUNNER_GENERIC_DOCKER_EXECUTOR_COUNT \
+        -var google_oauth_app_id=$GOOGLE_OAUTH_APP_ID \
+        -var google_oauth_app_secret=$GOOGLE_OAUTH_APP_SECRET \
+        -var vpn_ddns_authentication_key_hmac_sha256=$VPN_DDNS_AUTHENTICATION_KEY_HMAC_SHA256
+
+
+  destroy-all:
+    dotenv: ['.env']
+    run: always
+    desc: |
+      Destroys the Gitlab instances. It will not delete the images.
+    preconditions:
+      - test -f s3_backend.tf
+    deps:
+      - validate-env-vars
+    cmds:
+      - |
+        terraform destroy \
+        -auto-approve \
+        -var hcloud_token=${HCLOUD_TOKEN} \
+        -var hetzner_dns_api_token=$HCLOUD_DNS_API_TOKEN \
+        -var gitlab_self_signed_cert_country=$GITLAB_SELF_SIGNED_CERT_COUNTRY \
+        -var gitlab_self_signed_cert_common_name=$GITLAB_SELF_SIGNED_CERT_COMMON_NAME \
+        -var gitlab_self_signed_cert_organization=$GITLAB_SELF_SIGNED_CERT_ORGANIZATION \
+        -var aws_access_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_ID \
+        -var aws_secret_key=$AWS_INFRASTRUCTURE_PROVISIONER_ACCESS_KEY_VALUE \
+        -var gitlab_admin_email=$GITLAB_ADMIN_EMAIL \
+        -var gitlab_admin_api_personal_access_token=$GITLAB_ADMIN_API_PERSONAL_ACCESS_TOKEN \
+        -var gitlab_admin_username=$GITLAB_ADMIN_USERNAME \
+        -var gitlab_admin_password=$GITLAB_ADMIN_PASSWORD \
+        -var gitlab_root_password=$GITLAB_ROOT_PASSWORD \
+        -var google_admin_customer_id=$GOOGLE_ADMIN_CUSTOMER_ID \
+        -var gitlab_runner_docker_executor_count=$GITLAB_RUNNER_GENERIC_DOCKER_EXECUTOR_COUNT \
+        -var google_oauth_app_id=$GOOGLE_OAUTH_APP_ID \
+        -var google_oauth_app_secret=$GOOGLE_OAUTH_APP_SECRET \
+        -var vpn_ddns_authentication_key_hmac_sha256=$VPN_DDNS_AUTHENTICATION_KEY_HMAC_SHA256

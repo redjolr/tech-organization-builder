@@ -1,0 +1,120 @@
+#cloud-config
+users:
+  - name: admin
+    groups: sudo
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_admin_authorized_key}
+    ssh_pwauth: false
+
+ssh_authorized_keys:
+  - ${ssh_root_authorized_key}
+
+ssh_deletekeys: false
+
+package_update: true
+package_upgrade: true
+runcmd:
+  - sudo add-apt-repository ppa:wireguard/wireguard
+  - sudo apt-get update
+  - sudo apt-get install -y wireguard ufw bind9
+  - echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+  - echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
+  - sysctl -p
+  - ufw allow 51820/udp
+  - ufw allow OpenSSH
+  - ufw allow dns
+  - ufw allow ssh
+  - ufw disable
+  - ufw enable
+  - systemctl enable wg-quick@wg0.service
+  - systemctl start wg-quick@wg0.service
+  - sudo wg set wg0 peer "${first_vpn_user_peer_public_key}"  allowed-ips ${first_vpn_user_ipv4_address_in_vpn_network}
+  - |
+    echo "
+    zone \"internal.${main_domain_name}\" {
+      type master;
+      file \"/etc/bind/db.internal.${main_domain_name}\";
+      allow-update { key ddns_key; };
+    };
+
+    zone \"0.0.10.in-addr.arpa\" {
+        type master;
+        file \"/etc/bind/db.10.0.0\";
+        allow-update { key ddns_key; };
+    };
+
+    key ddns_key {
+        algorithm HMAC-SHA256;
+        secret \"${vpn_ddns_authentication_key_hmac_sha256}\";
+    };
+    " >> /etc/bind/named.conf.local
+
+  - |
+    echo "
+    \$TTL    86400
+    @       IN      SOA     ns1.internal.${main_domain_name}. admin.internal.${main_domain_name}. (
+                                2023101501         ; Serial
+                                3600               ; Refresh
+                                1800               ; Retry
+                                1209600            ; Expire
+                                86400 )            ; Minimum TTL
+
+    @           IN      NS      ns1.internal.${main_domain_name}.
+    ns1         IN      A       ${vpn_server_ipv4_address_in_vpn_network}
+    wireguard   IN      A       ${vpn_server_ipv4_address_in_vpn_network}
+    " >> /etc/bind/db.internal.${main_domain_name}
+
+  - |
+    echo "
+    \$TTL    86400
+    @       IN      SOA     ns1.internal.${main_domain_name}. admin.internal.${main_domain_name}. (
+                                2023101501         ; Serial
+                                3600               ; Refresh
+                                1800               ; Retry
+                                1209600            ; Expire
+                                86400 )            ; Minimum TTL
+
+    ; Define the nameserver
+    @       IN      NS      ns1.internal.${main_domain_name}.
+    " >> /etc/bind/db.10.0.0
+
+  - |
+    echo "
+    options {
+            directory \"/var/cache/bind\";
+            forwarders {
+                    8.8.8.8; 8.8.4.4;
+            };
+            dnssec-validation auto;
+            listen-on { any; };
+            allow-query { any; };
+            listen-on-v6 { any; };
+    };
+    " > /etc/bind/named.conf.options
+
+  - chown bind:bind /etc/bind/db.internal.${main_domain_name}
+  - chown bind:bind /etc/bind/db.10.0.0
+  - systemctl restart bind9
+  - chmod -R 777 /etc/bind
+
+write_files:
+  - path: /etc/wireguard/wg0.conf
+    content: |
+      [Interface]
+      Address = ${vpn_server_ipv4_address_in_vpn_network}/24
+      DNS = 1.1.1.1
+      PrivateKey = ${wireguard_server_peer_private_key}
+      ListenPort = 51820
+      SaveConfig = true
+      PostUp = ufw route allow in on wg0
+      PostUp = iptables -t nat -I POSTROUTING -o eth0 -j MASQUERADE
+      PostUp = iptables -t nat -I POSTROUTING -o $(ifconfig | grep -B1 ${vpn_server_ipv4_address_in_internal_tools_network} | grep -o "^\w*") -j MASQUERADE
+      PostUp = ip6tables -t nat -I POSTROUTING -o eth0 -j MASQUERADE
+      PreDown = ufw route delete allow in on wg0
+      PreDown = iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+      PreDown = iptables -t nat -D POSTROUTING -o $(ifconfig | grep -B1 ${vpn_server_ipv4_address_in_internal_tools_network} | grep -o "^\w*") -j MASQUERADE
+      PreDown = ip6tables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+    owner: "root:root"
+    permissions: "0644"

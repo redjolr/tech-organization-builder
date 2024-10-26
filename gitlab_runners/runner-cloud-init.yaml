@@ -1,0 +1,31 @@
+#cloud-config
+
+package_update: true
+package_upgrade: true
+runcmd:
+  - echo "${gitlab_ipv4_address_in_internal_tools_network}  gitlab.internal.${main_domain_name}" >> /etc/hosts
+  - curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | sudo bash
+  - sudo apt-get update
+  - sudo apt install -y gitlab-runner
+  - sudo apt-get install ca-certificates curl
+  - sudo install -m 0755 -d /etc/apt/keyrings
+  - sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  - sudo chmod a+r /etc/apt/keyrings/docker.asc
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  - sudo apt-get update
+  - sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - sudo usermod -aG docker gitlab-runner
+  - sudo mkdir -p $(dirname "/etc/gitlab-runner/certs/gitlab.internal.${main_domain_name}.crt")
+  - openssl s_client -connect gitlab.internal.${main_domain_name}:443 -showcerts </dev/null 2>/dev/null | sed -e '/-----BEGIN/,/-----END/!d' | sudo tee "/etc/gitlab-runner/certs/gitlab.internal.${main_domain_name}.crt" >/dev/null
+  - |
+    sudo gitlab-runner register \
+    --non-interactive \
+    --tls-ca-file=/etc/gitlab-runner/certs/gitlab.internal.${main_domain_name}.crt \
+    --url "https://gitlab.internal.${main_domain_name}" \
+    --token "${runner_authentication_token}" \
+    --executor "docker" \
+    --docker-image alpine:latest \
+    --docker-extra-hosts "${gitlab_hostname}:${gitlab_ipv4_address_in_internal_tools_network}" \
+    --description "docker-runner"
+  - gitlab-runner verify
+  - gitlab-runner run
