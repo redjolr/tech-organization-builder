@@ -6,10 +6,10 @@ This open-source framework is your go-to guide for building a solid tech foundat
 
 Designed with ease of use in mind, this framework walks you through each step, making it simple to get everything up and running quickly. You won’t just get a bunch of technical instructions; you’ll also learn best practices to keep your organization secure and efficient as you grow.
 
-# Step 0: Install tools and set up the terraform backend
+## Step 0: Install tools and set up the terraform backend
 
 1. [Task](https://taskfile.dev/)
-2. Terraform
+2. [Terraform](https://www.terraform.io/)
 
 ## Step 1: Creating the Organization Admin Email
 
