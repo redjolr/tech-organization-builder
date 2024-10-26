@@ -264,6 +264,12 @@ TODO
 4. **Connect to the WireGuard VPN**  
    Use the WireGuard configuration file located at `secrets/wireguard_conf_files/first_vpn_user_wireguard.config` to connect to the WireGuard VPN. Refer to WireGuard's website for instructions based on your operating system.
 
+## Step 12: Deploy Gitlab
+
+1. Make sure you are connected to the VPN.
+2. Execute `deploy-gitlab`
+3. Wait for about 10 minutes, because the Gitlab installation continues well after the Server has been created. Cloud init works in the background. Navigate to `https://gitlanb.internal.${main_domain_name}` and keep refreshing until Gitlab is live.
+
 ## Step 12: Configure GitLab
 
 1. Log in to GitLab using the superadmin account.
