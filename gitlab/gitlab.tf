@@ -1,12 +1,3 @@
-
-resource "hcloud_primary_ip" "gitlab_primary_ip" {
-  name          = "gitlab_ip"
-  type          = "ipv4"
-  assignee_type = "server"
-  auto_delete   = false
-  datacenter    = "nbg1-dc3" #"fsn1-dc14"
-}
-
 resource "tls_private_key" "ssh_root" {
   algorithm = "ED25519"
 }
@@ -53,15 +44,51 @@ resource "local_file" "gitlab_ssh_admin_priv_key_in_secrets" {
 resource "wireguard_asymmetric_key" "gitlab_vpn_peer_key_pair" {
 }
 
+resource "hcloud_firewall" "gitlab_firewall" {
+  name = "gitlab_firewall"
 
+  rule {
+    direction       = "out"
+    protocol        = "tcp"
+    port            = "1-65535"
+    destination_ips = ["0.0.0.0/0", "::/0"]
+  }
+
+  rule {
+    direction       = "out"
+    protocol        = "udp"
+    port            = "1-65535"
+    destination_ips = ["0.0.0.0/0", "::/0"]
+  }
+
+  rule {
+    direction       = "out"
+    protocol        = "icmp"
+    destination_ips = ["0.0.0.0/0", "::/0"]
+  }
+
+  rule {
+    direction       = "out"
+    protocol        = "gre"
+    destination_ips = ["0.0.0.0/0", "::/0"]
+  }
+
+  rule {
+    direction       = "out"
+    protocol        = "esp"
+    destination_ips = ["0.0.0.0/0", "::/0"]
+  }
+  # No "in" rules are defined, so all incoming traffic is blocked by default
+}
 
 # Create a server
 resource "hcloud_server" "gitlab" {
-  name        = "gitlab"
-  image       = "debian-12" #data.hcloud_image.gitlab_snapshot.id
-  server_type = var.gitlab_server_type
-  datacenter  = "nbg1-dc3" #"fsn1-dc14"
-  ssh_keys    = [hcloud_ssh_key.gitlab_root_ssh_key.id, hcloud_ssh_key.gitlab_admin_ssh_key.id]
+  name         = "gitlab"
+  image        = "debian-12" #data.hcloud_image.gitlab_snapshot.id
+  server_type  = var.gitlab_server_type
+  datacenter   = "nbg1-dc3" #"fsn1-dc14"
+  firewall_ids = [hcloud_firewall.gitlab_firewall.id]
+  ssh_keys     = [hcloud_ssh_key.gitlab_root_ssh_key.id, hcloud_ssh_key.gitlab_admin_ssh_key.id]
   lifecycle {
     ignore_changes = [ssh_keys, user_data]
   }
@@ -91,9 +118,8 @@ resource "hcloud_server" "gitlab" {
     }
   )
   public_net {
-    # ipv4 = hcloud_primary_ip.gitlab_primary_ip.id
-    ipv4_enabled = false
-    ipv6_enabled = false
+    ipv4_enabled = true
+    ipv6_enabled = true
   }
   network {
     network_id = var.internal_tools_network_id
@@ -136,19 +162,9 @@ Host gitlab
   depends_on = [hcloud_server.gitlab]
 }
 
-
-# resource "hetznerdns_record" "gitlab_a_record" {
-#   zone_id = var.main_dns_zone_id
-#   name    = "gitlab"
-#   value   = hcloud_server.gitlab.ipv4_address
-#   type    = "A"
-#   ttl     = 3600
-# }
-
 resource "dns_a_record_set" "gitlab_a_record_in_vpn" {
   zone      = "internal.${var.main_domain_name}."
   name      = "gitlab"
   addresses = [var.gitlab_ipv4_address_in_vpn_network]
   ttl       = 300
 }
-
