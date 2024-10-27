@@ -65,7 +65,7 @@ write_files:
   - path: /etc/wireguard/wg0.conf
     content: |
       [Interface]
-      Address = ${gitlab_ipv4_address_in_vpn_network}/24
+      Address = ${gitlab_ipv4_address_in_vpn_network}/32
       DNS = ${vpn_server_ipv4_address_in_vpn_network}
       PrivateKey = ${gitlab_vpn_peer_private_key}
 
