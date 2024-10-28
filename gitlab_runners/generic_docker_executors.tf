@@ -19,11 +19,12 @@ data "template_file" "cloud_init" {
 }
 
 resource "hcloud_server" "gitlab_runner_with_generic_docker_executor_server" {
-  count       = var.gitlab_runner_docker_executor_count
-  name        = "runner-generic-docker-executor-${count.index}"
-  image       = "debian-12"
-  server_type = "ccx13"    # cx11(2GB) cx22(4GB), cx32(8GB), cx42(16GB), cx52(32GB)
-  datacenter  = "nbg1-dc3" #"ash-dc1" #"hel1-dc2" #"fsn1-dc14" #"nbg1-dc3"
+  count        = var.gitlab_runner_docker_executor_count
+  name         = "runner-generic-docker-executor-${count.index}"
+  image        = "debian-12"
+  firewall_ids = [hcloud_firewall.gitlab_runners_firewall.id]
+  server_type  = "ccx13"    # cx11(2GB) cx22(4GB), cx32(8GB), cx42(16GB), cx52(32GB)
+  datacenter   = "nbg1-dc3" #"ash-dc1" #"hel1-dc2" #"fsn1-dc14" #"nbg1-dc3"
   lifecycle {
     ignore_changes = [ssh_keys, user_data]
   }

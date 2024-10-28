@@ -68,7 +68,7 @@ gitlab_self_signed_cert_common_name  = "${var.main_domain_name}"
 gitlab_self_signed_cert_organization = "${var.gitlab_self_signed_cert_organization}"
 gitlab_admin_username                = "superadmin"
 gitlab_admin_email                   = "${var.organization_admin_email}"
-gitlab_runner_docker_executor_count  = 1
+gitlab_runner_docker_executor_count  = 0
 
   EOT
   filename = "${path.cwd}/gitlab.auto.tfvars"
