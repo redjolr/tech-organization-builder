@@ -107,15 +107,17 @@ Buy a domain for your organization through your preferred domain registrar. The 
 
 4. **Create a User Group**
    Set up a user group called `automated-provisioning-users`.
-5. **Create an IAM User**
+5. **Assign permissions to group**
+   Add the `automated-provisioning-policy` to the `automated-provisioning-users` group.
+6. **Create an IAM User**
    Add an IAM user named `terraform-provisioner` to the `automated-provisioning-users` group. This user should not have access to the AWS Management Console.
-6. **Generate Access Keys**
+7. **Generate Access Keys**
    Go to the terraform-provisioner user and create an access key. Use a description like "Provision AWS SES for organization."
 
    - Save the Access Key in a secure location, as you'll need it later to set the `aws_access_key` variable.
    - Save the Secret Access Key securely as well, as it will be required later to set the `aws_secret_key` variable.
 
-7. **SES Sandbox to Production**
+8. **SES Sandbox to Production**
    By default, AWS SES is in a sandbox mode, where you can only send emails to verified addresses. You can request production access later if broader email access is required.
 
 ## Step 4: Set up hetzner account
@@ -128,6 +130,9 @@ Buy a domain for your organization through your preferred domain registrar. The 
 
 3. **Generate an API Access Token**
    Within your Hetzner project, create an API access token named `terraform-provisioner` with read and write permissions. Save this token securely, as you will later assign it to the `hcloud_token` variable.
+
+4. **Generate an DNS API Access Token**
+   Within your Hetzner project, create a DNS API token. Save this token securely, as you will later assign it to the `hetzner_dns_api_token` variable.
 
 ## Step 5: Setting up Google Workspace
 
