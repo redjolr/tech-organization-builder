@@ -274,7 +274,7 @@ TODO
 
 1. Log in to GitLab using the superadmin account.
 2. Set up two-factor authentication (2FA) for the superadmin account.
-3. Generate a personal access token with the `api` scope and store it in the `a` variable of the `secrets.auto.tfvars` file.
+3. Generate a personal access token with the `api` scope and store it in the `gitlab_admin_api_personal_access_token` variable of the `secrets.auto.tfvars` file.
 
 4. Apply the `gitlab_settings` Terraform module immediately after deploying GitLab:
 
