@@ -56,6 +56,10 @@ variable "gitlab_root_password" {
 variable "gitlab_admin_api_personal_access_token" {
   type      = string
   sensitive = true
+  validation {
+    condition     = length(var.gitlab_admin_api_personal_access_token) > 0
+    error_message = "The gitlab personal access token is not defined."
+  }
 }
 
 variable "gitlab_admin_username" {
