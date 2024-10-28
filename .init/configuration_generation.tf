@@ -3,22 +3,20 @@ resource "random_bytes" "vpn_ddns_authentication_key_hmac_sha256" {
 }
 
 resource "random_password" "gitlab_root_password" {
-  length           = 30
-  lower            = true
-  upper            = true
-  numeric          = true
-  special          = true
-  override_special = "!#$%&*?.+-_"
+  length  = 64
+  lower   = true
+  upper   = true
+  numeric = true
+  special = false
 }
 
 
 resource "random_password" "gitlab_admin_password" {
-  length           = 30
-  lower            = true
-  upper            = true
-  numeric          = true
-  special          = true
-  override_special = "!#$%&*?.+-_"
+  length  = 64
+  lower   = true
+  upper   = true
+  numeric = true
+  special = false
 }
 
 resource "local_file" "configuration_auto_tfvars" {
