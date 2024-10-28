@@ -35,9 +35,8 @@ tasks:
       - test -f s3_backend.tf
     cmds:
       - export $(grep -v '^#' secrets.auto.tfvars | sed 's/ *= */=/g' | sed 's/"//g')
-      - echo "$hcloud_token"
       - |
-        terraform  init \
+        terraform init \
         -backend-config="access_key=$aws_access_key" \
         -backend-config="secret_key=$aws_secret_key"
       - terraform apply -auto-approve -target=module.foundation
