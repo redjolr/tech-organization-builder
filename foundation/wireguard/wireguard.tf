@@ -58,11 +58,12 @@ resource "wireguard_asymmetric_key" "first_vpn_user_peer_key_pair" {
 
 # Create a server
 resource "hcloud_server" "wireguard" {
-  name        = "wireguard"
-  image       = "debian-12"
-  server_type = var.wireguard_server_type
-  datacenter  = "nbg1-dc3"
-  ssh_keys    = [hcloud_ssh_key.wireguard_root_ssh_key.id, hcloud_ssh_key.wireguard_admin_ssh_key.id]
+  name         = "wireguard"
+  image        = "debian-12"
+  server_type  = var.wireguard_server_type
+  datacenter   = "nbg1-dc3"
+  ssh_keys     = [hcloud_ssh_key.wireguard_root_ssh_key.id, hcloud_ssh_key.wireguard_admin_ssh_key.id]
+  firewall_ids = [hcloud_firewall.wireguard_firewall.id]
   lifecycle {
     ignore_changes = [ssh_keys, user_data]
   }
